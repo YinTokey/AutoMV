@@ -1,0 +1,8 @@
+{
+  "builds": [
+    {
+      "src": "webhook/package.json",
+      "use": "@vercel/next"
+    }
+  ]
+}
