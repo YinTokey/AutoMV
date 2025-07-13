@@ -1,28 +1,37 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import ControlPanel from './components/ControlPanel';
 import VideoPlayer from './components/VideoPlayer';
 import StatusLog from './components/StatusLog';
 
 export default function Home() {
   const [prompt, setPrompt] = useState('A vibrant, futuristic city at night, glowing with neon lights');
-  const [sceneCount, setSceneCount] = useState(2);
+    const [sceneCount, setSceneCount] = useState(1);
+  const [instrumental, setInstrumental] = useState(false);
+  const [characterImage, setCharacterImage] = useState<File | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
 
-  const handleGenerate = async () => {
-    if (!prompt) return;
+    const handleGenerate = async () => {
+        if (!prompt) return;
 
     setIsGenerating(true);
     setLogs(['🚀 Starting video generation...']);
     setVideoUrl(null);
 
+    const formData = new FormData();
+    formData.append('prompt', prompt);
+    formData.append('sceneCount', sceneCount.toString());
+    formData.append('instrumental', instrumental.toString());
+    if (characterImage) {
+      formData.append('characterImage', characterImage);
+    }
+
     const response = await fetch('/api/generate', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, sceneCount }),
+      body: formData,
     });
 
     if (!response.body) return;
@@ -72,6 +81,10 @@ export default function Home() {
           setPrompt={setPrompt}
           sceneCount={sceneCount}
           setSceneCount={setSceneCount}
+          instrumental={instrumental}
+          setInstrumental={setInstrumental}
+          characterImage={characterImage}
+          setCharacterImage={setCharacterImage}
           handleGenerate={handleGenerate}
           isGenerating={isGenerating}
         />

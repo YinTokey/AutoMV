@@ -91,6 +91,35 @@ async function makeRequest(url: string, options: any = {}) {
   }
 }
 
+async function optimizePrompt(prompt: string): Promise<string> {
+  sendLog('🤖 Optimizing prompt...');
+  if (!CONFIG.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY not configured');
+
+  const response = await makeRequest('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${CONFIG.OPENAI_API_KEY}` },
+    body: JSON.stringify({
+      model: "gpt-4o",
+      messages: [
+        {
+          role: "system",
+          content: "You are a creative assistant. Your task is to take a user's idea for a music video and expand it into a more vivid and detailed prompt. Focus on mood, visual elements, and narrative. The output should be a single, enhanced prompt string. Do not add any extra conversational text or formatting."
+        },
+        {
+          role: "user",
+          content: `Enhance this music video concept: ${prompt}`
+        }
+      ],
+      temperature: 0.7,
+      max_tokens: 500
+    })
+  });
+
+  const optimizedPrompt = response.choices[0].message.content.trim();
+  sendLog(`🤖 Optimized prompt: ${optimizedPrompt.substring(0, 100)}...`);
+  return optimizedPrompt;
+}
+
 async function generateScenes(prompt: string, sceneCount: number) {
     sendLog('🎬 Generating scenes with OpenAI...');
     if (!CONFIG.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY not configured');
@@ -99,11 +128,11 @@ async function generateScenes(prompt: string, sceneCount: number) {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${CONFIG.OPENAI_API_KEY}` },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: "gpt-4o",
         messages: [
           {
             role: "system",
-            content: `You are an expert music video director. Create detailed scene breakdowns. Return a JSON object: { "scenes": [ { "scene_number": 1, "image_prompt": "...", "music_prompt": "..." } ] }`
+            content: `You are an expert music video director. Create detailed scene breakdowns. For each scene, provide an image prompt, a music prompt, a music style (e.g., 'cinematic', 'pop', 'ambient'), and a title for the music track. Return a JSON object: { "scenes": [ { "scene_number": 1, "image_prompt": "...", "music_prompt": "...", "style": "...", "title": "..." } ] }`
           },
           {
             role: "user",
@@ -143,7 +172,7 @@ const VISUAL_STYLES = [
     'fantasy watercolor, luminous, ethereal glow'
 ];
 
-async function generateImage(prompt: string, sceneNumber: number, retryCount = 0) {
+async function generateImage(prompt: string, sceneNumber: number, characterImagePath: string | null, retryCount = 0) {
     sendLog(`🖼️ Generating image for scene ${sceneNumber}...`);
     if (!CONFIG.RUNWARE_API_KEY) throw new Error('RUNWARE_API_KEY not configured');
 
@@ -161,7 +190,13 @@ async function generateImage(prompt: string, sceneNumber: number, retryCount = 0
     }
 
     const randomStyle = VISUAL_STYLES[Math.floor(Math.random() * VISUAL_STYLES.length)];
-    const enhancedPrompt = `${prompt}, ${randomStyle}`;
+        let enhancedPrompt = `${prompt}, ${randomStyle}`;
+    if (characterImagePath) {
+      // Note: This is a simplified way to reference the character.
+      // A more advanced implementation might use image-to-image models or specific prompt techniques.
+      enhancedPrompt = `A character that looks like the reference image is in this scene: ${prompt}, ${randomStyle}`;
+      sendLog(`🧑 Incorporating character reference for scene ${sceneNumber}`);
+    }
     const negativePrompt = 'blurry, low quality, boring, flat, ugly, simple, watermark, text';
 
     const response = await makeRequest('https://api.runware.ai/v1', {
@@ -171,7 +206,7 @@ async function generateImage(prompt: string, sceneNumber: number, retryCount = 0
         taskType: "imageInference",
         taskUUID: uuidv4(),
         positivePrompt: enhancedPrompt,
-        model: "runware:101@1",
+        model: "rundiffusion:120@100",
         negativePrompt: negativePrompt,
             width: 1024,
         height: 576,
@@ -191,13 +226,13 @@ async function generateImage(prompt: string, sceneNumber: number, retryCount = 0
     return imagePath;
 }
 
-async function generateImagesConcurrently(scenes: any[]) {
+async function generateImagesConcurrently(scenes: any[], characterImagePath: string | null) {
     const imagePaths = [];
     for (let i = 0; i < scenes.length; i += CONFIG.MAX_CONCURRENT_IMAGES) {
       const batch = scenes.slice(i, i + CONFIG.MAX_CONCURRENT_IMAGES);
       sendLog(`🖼️ Starting image batch ${Math.floor(i / CONFIG.MAX_CONCURRENT_IMAGES) + 1}`);
       const batchPromises = batch.map((scene, batchIndex) => 
-        generateImage(scene.image_prompt, i + batchIndex + 1)
+                generateImage(scene.image_prompt, i + batchIndex + 1, characterImagePath)
       );
       imagePaths.push(...await Promise.all(batchPromises));
       if (i + CONFIG.MAX_CONCURRENT_IMAGES < scenes.length) {
@@ -209,7 +244,7 @@ async function generateImagesConcurrently(scenes: any[]) {
 }
 
 
-async function generateMusic(prompt: string, sceneNumber: number) {
+async function generateMusic(prompt: string, style: string, title: string, sceneNumber: number, instrumental: boolean) {
     sendLog(`🎵 Starting music generation for scene ${sceneNumber}...`);
     if (!CONFIG.SUNO_API_KEY) throw new Error('SUNO_API_KEY not configured');
   
@@ -217,10 +252,13 @@ async function generateMusic(prompt: string, sceneNumber: number) {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${CONFIG.SUNO_API_KEY}` },
       body: JSON.stringify({ 
-          prompt, 
+          prompt,
+          style,
+          title,
           customMode: true, 
-          instrumental: false,
+          instrumental,
           model: "V3_5",
+          negativeTags: "low quality, noisy, distorted, muffled",
           callBackUrl: `${CONFIG.VERCEL_URL}/api/music-callback`
       }),
     });
@@ -275,14 +313,14 @@ async function pollMusicCompletion(taskId: string, sceneNumber: number) {
     throw new Error(`Music generation timeout for scene ${sceneNumber}`);
 }
 
-async function generateMusicConcurrently(scenes: any[]) {
+async function generateMusicConcurrently(scenes: any[], instrumental: boolean) {
     const musicTasks = [];
     for (let i = 0; i < scenes.length; i += CONFIG.MAX_CONCURRENT_MUSIC) {
         const batch = scenes.slice(i, i + CONFIG.MAX_CONCURRENT_MUSIC);
         sendLog(`🎵 Starting music batch ${Math.floor(i / CONFIG.MAX_CONCURRENT_MUSIC) + 1}`);
         const batchPromises = batch.map(async (scene, batchIndex) => {
             const sceneNumber = i + batchIndex + 1;
-            const taskId = await generateMusic(scene.music_prompt, sceneNumber);
+                                    const taskId = await generateMusic(scene.music_prompt, scene.style, scene.title, sceneNumber, instrumental);
             return { taskId, sceneNumber };
         });
         musicTasks.push(...await Promise.all(batchPromises));
@@ -380,12 +418,16 @@ async function cleanup() {
 }
 
 export async function POST(req: NextRequest) {
-  const { prompt, sceneCount } = await req.json();
+  const formData = await req.formData();
+  const prompt = formData.get('prompt') as string;
+  const sceneCount = parseInt(formData.get('sceneCount') as string, 10);
+  const instrumental = formData.get('instrumental') === 'true';
+  const characterImageFile = formData.get('characterImage') as File | null;
 
   const stream = new ReadableStream({
     start(controller) {
       streamController = controller;
-      runGeneration(prompt, sceneCount)
+      runGeneration(prompt, sceneCount, instrumental, characterImageFile)
         .catch(e => {
           sendError(e.message);
         })
@@ -404,11 +446,20 @@ export async function POST(req: NextRequest) {
   });
 }
 
-async function runGeneration(prompt: string, sceneCount: number) {
+async function runGeneration(initialPrompt: string, sceneCount: number, instrumental: boolean, characterImageFile: File | null) {
     await ensureDirectories();
-    const scenes = await generateScenes(prompt, sceneCount);
-    const imagePaths = await generateImagesConcurrently(scenes);
-    const audioPaths = await generateMusicConcurrently(scenes);
+        const optimizedPrompt = await optimizePrompt(initialPrompt);
+        let characterImagePath: string | null = null;
+    if (characterImageFile) {
+      const imageBuffer = Buffer.from(await characterImageFile.arrayBuffer());
+      characterImagePath = path.join(CONFIG.TEMP_DIR, `char_ref_${uuidv4()}_${characterImageFile.name}`);
+      await fs.writeFile(characterImagePath, imageBuffer);
+      sendLog(`🧑 Character reference image saved: ${characterImageFile.name}`);
+    }
+
+    const scenes = await generateScenes(optimizedPrompt, sceneCount);
+        const imagePaths = await generateImagesConcurrently(scenes, characterImagePath);
+        const audioPaths = await generateMusicConcurrently(scenes, instrumental);
     const videoUrl = await createVideo(scenes, imagePaths, audioPaths);
     sendVideoUrl(videoUrl);
     await cleanup();

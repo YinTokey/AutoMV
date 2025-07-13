@@ -7,11 +7,21 @@ interface ControlPanelProps {
   setPrompt: (prompt: string) => void;
   sceneCount: number;
   setSceneCount: (count: number) => void;
+  instrumental: boolean;
+  setInstrumental: (instrumental: boolean) => void;
+  characterImage: File | null;
+  setCharacterImage: (image: File | null) => void;
   handleGenerate: () => void;
   isGenerating: boolean;
 }
 
-export default function ControlPanel({ prompt, setPrompt, sceneCount, setSceneCount, handleGenerate, isGenerating }: ControlPanelProps) {
+export default function ControlPanel({
+  prompt, setPrompt,
+  sceneCount, setSceneCount,
+  instrumental, setInstrumental,
+  characterImage, setCharacterImage,
+  handleGenerate, isGenerating
+}: ControlPanelProps) {
   return (
     <div className="flex flex-col h-full p-6 bg-gray-50 border-r border-gray-200">
       <div className="mb-6">
@@ -45,6 +55,37 @@ export default function ControlPanel({ prompt, setPrompt, sceneCount, setSceneCo
             disabled={isGenerating}
           />
         </div>
+
+        <div className="flex items-center justify-between">
+          <label htmlFor="instrumental" className="text-sm font-medium text-gray-700">Instrumental Music</label>
+          <input
+            id="instrumental"
+            type="checkbox"
+            className="h-5 w-5 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500 cursor-pointer"
+            checked={instrumental}
+            onChange={(e) => setInstrumental(e.target.checked)}
+            disabled={isGenerating}
+          />
+        </div>
+
+        <div>
+          <label htmlFor="characterImage" className="block text-sm font-medium text-gray-700 mb-1">Character Reference (Optional)</label>
+          <input
+            id="characterImage"
+            type="file"
+            accept="image/*"
+            className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 disabled:opacity-50"
+            onChange={(e) => setCharacterImage(e.target.files ? e.target.files[0] : null)}
+            disabled={isGenerating}
+          />
+          {characterImage && (
+            <div className="mt-2 text-xs text-gray-600 flex items-center">
+              <img src={URL.createObjectURL(characterImage)} alt="Preview" className="h-10 w-10 rounded-md object-cover mr-2" />
+              <span>{characterImage.name}</span>
+            </div>
+          )}
+        </div>
+
       </div>
 
       <button
