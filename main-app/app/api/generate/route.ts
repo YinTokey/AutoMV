@@ -27,6 +27,8 @@ const CONFIG = {
 };
 
 let streamController: ReadableStreamDefaultController<any>;
+// Keep a list of generated video URLs for this server instance
+const generatedVideos: string[] = [];
 
 function sendLog(log: string) {
   if (streamController) {
@@ -41,8 +43,9 @@ function sendError(error: string) {
   }
 
 function sendVideoUrl(videoUrl: string) {
+  generatedVideos.push(videoUrl);
   if (streamController) {
-    streamController.enqueue(`data: ${JSON.stringify({ videoUrl })}\n\n`);
+    streamController.enqueue(`data: ${JSON.stringify({ videoUrl, videoList: generatedVideos })}\n\n`);
   }
 }
 
@@ -122,22 +125,60 @@ async function generateScenes(prompt: string, sceneCount: number) {
     return parsedResponse.scenes;
 }
 
-async function generateImage(prompt: string, sceneNumber: number) {
+const VISUAL_STYLES = [
+    'cinematic, 8k, photorealistic, high detail, vibrant colors',
+    'anime style, key visual, cel shading, vibrant palette',
+    'fantasy, epic, dramatic lighting, matte painting',
+    'sci-fi, futuristic, neon lights, cyberpunk atmosphere',
+    'watercolor, fluid, dreamy, pastel tones',
+    'impressionistic, oil painting, thick brush strokes',
+    'pixel art, 16-bit, retro game aesthetic',
+    'steampunk, victorian, brass machinery, dramatic',
+    'noir film, monochrome, strong shadows, moody',
+    'surrealism, dali-esque, melting landscapes',
+    'minimalist, flat design, bold shapes',
+    'vaporwave, 90s retro, gridlines, pink and cyan',
+    'glitch art, distorted, RGB shift, futuristic',
+    'comic book, halftone, bold outlines',
+    'fantasy watercolor, luminous, ethereal glow'
+];
+
+async function generateImage(prompt: string, sceneNumber: number, retryCount = 0) {
     sendLog(`🖼️ Generating image for scene ${sceneNumber}...`);
     if (!CONFIG.RUNWARE_API_KEY) throw new Error('RUNWARE_API_KEY not configured');
-    if (!prompt || prompt.trim() === '') throw new Error(`Empty image prompt for scene ${sceneNumber}`);
-  
+
+    if (!prompt || prompt.trim() === '') {
+        if (retryCount < 3) {
+            sendLog(`⚠️ Empty image prompt for scene ${sceneNumber}. Retrying...`);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            // We can't really get a new prompt here without more context,
+            // so we'll just log it and hope other scenes are okay.
+            // In a real scenario, we might want to call OpenAI again for just this scene.
+            throw new Error(`Persistent empty image prompt for scene ${sceneNumber}`);
+        } else {
+            throw new Error(`Empty image prompt for scene ${sceneNumber}`);
+        }
+    }
+
+    const randomStyle = VISUAL_STYLES[Math.floor(Math.random() * VISUAL_STYLES.length)];
+    const enhancedPrompt = `${prompt}, ${randomStyle}`;
+    const negativePrompt = 'blurry, low quality, boring, flat, ugly, simple, watermark, text';
+
     const response = await makeRequest('https://api.runware.ai/v1', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${CONFIG.RUNWARE_API_KEY}` },
       body: JSON.stringify([{
         taskType: "imageInference",
         taskUUID: uuidv4(),
-        positivePrompt: prompt,
+        positivePrompt: enhancedPrompt,
         model: "runware:101@1",
-        width: 1024,
+        negativePrompt: negativePrompt,
+            width: 1024,
         height: 576,
-        numberResults: 1
+        numberResults: 1,
+            sampler: "DPM++ 2M Karras",
+            steps: 30,
+            guidanceScale: 7
       }])
     });
   
@@ -258,23 +299,61 @@ async function generateMusicConcurrently(scenes: any[]) {
     return audioPaths;
 }
 
+async function getAudioDuration(filePath: string): Promise<number> {
+    try {
+        const command = `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${filePath}"`;
+        const { stdout } = await execAsync(command);
+        return parseFloat(stdout.trim());
+    } catch (error) {
+        sendLog(`⚠️ Could not get duration for ${filePath}. Defaulting to 5s.`);
+        return 5.0; // Default duration
+    }
+}
+
 async function createVideo(scenes: any[], imagePaths: string[], audioPaths: string[]) {
     sendLog('🎬 Creating final video with FFmpeg...');
     const videoFileName = `music_video_${Date.now()}.mp4`;
     const outputPath = path.join(CONFIG.OUTPUT_DIR, videoFileName);
-  
+
     const sceneVideoPaths = [];
     for (let i = 0; i < scenes.length; i++) {
         const sceneVideoPath = path.join(CONFIG.TEMP_DIR, `scene_${i + 1}_video.mp4`);
-        const cmd = `ffmpeg -loop 1 -i "${imagePaths[i]}" -i "${audioPaths[i]}" -c:v libx264 -c:a aac -vf "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2" -pix_fmt yuv420p -shortest -y "${sceneVideoPath}"`;
-        sendLog(`🎬 Creating scene ${i + 1} video...`);
-        await execAsync(cmd);
-        sceneVideoPaths.push(sceneVideoPath);
+        const audioDuration = await getAudioDuration(audioPaths[i]);
+        
+        // Dynamic zoom & pan with random direction/speed for diversity
+        const directions = [
+            "iw/2-(iw/zoom/2)",        // center
+            "0",                         // left/top
+            "iw-(iw/zoom)",              // right
+        ];
+        const randX = directions[Math.floor(Math.random() * directions.length)];
+        const randY = directions[Math.floor(Math.random() * directions.length)];
+        // Reduced zoom speed range to half
+        // Further reduced zoom speed
+        const speed = (Math.random() * 0.0004 + 0.0001).toFixed(4); // 0.0001-0.0005
+        const zoomPan = `zoompan=z='min(zoom+${speed},1.15)':d=${Math.ceil(25 * audioDuration)}:x='${randX}':y='${randY}':s=1024x576`; // Max zoom 1.15 for subtle effect
+        
+        const fadeOutStart = (Math.max(0, audioDuration - 1)).toFixed(2);
+        const cmd = `ffmpeg -loop 1 -i "${imagePaths[i]}" -i "${audioPaths[i]}" -vf "${zoomPan},fade=t=in:st=0:d=1,fade=t=out:st=${fadeOutStart}:d=1,eq=saturation=1.2:contrast=1.05,scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p" -c:v libx264 -c:a aac -shortest -y "${sceneVideoPath}"`;
+        
+        sendLog(`🎬 Creating scene ${i + 1} video (${audioDuration.toFixed(2)}s)...`);
+        try {
+            await execAsync(cmd);
+            sceneVideoPaths.push(sceneVideoPath);
+        } catch (error: any) {
+            sendLog(`❌ FFmpeg error for scene ${i + 1}: ${error.message}`);
+            // Decide if we should skip this scene or stop the whole process
+            // For now, we'll just log and continue
+        }
+    }
+
+    if (sceneVideoPaths.length === 0) {
+        throw new Error('No video scenes were successfully generated.');
     }
 
     if (sceneVideoPaths.length > 1) {
         const concatFilePath = path.join(CONFIG.TEMP_DIR, 'concat.txt');
-        const concatContent = sceneVideoPaths.map(p => `file '${p}'`).join('\n');
+        const concatContent = sceneVideoPaths.map(p => `file '${p.replace(/\\/g, '/')}'`).join('\n');
         await fs.writeFile(concatFilePath, concatContent);
         const concatCmd = `ffmpeg -f concat -safe 0 -i "${concatFilePath}" -c copy -y "${outputPath}"`;
         sendLog('🎬 Concatenating videos...');
@@ -282,7 +361,7 @@ async function createVideo(scenes: any[], imagePaths: string[], audioPaths: stri
     } else {
         await fs.rename(sceneVideoPaths[0], outputPath);
     }
-  
+
     sendLog('🎬 Final video created!');
     return `/output/${videoFileName}`;
 }

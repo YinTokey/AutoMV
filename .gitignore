@@ -6,6 +6,8 @@
 # Next.js build artifacts
 **/.next
 **/out
+**/output
+public/output
 
 # Other build outputs
 **/build
