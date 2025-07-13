@@ -1,0 +1,36 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# Dependencies
+**/node_modules
+
+# Next.js build artifacts
+**/.next
+**/out
+
+# Other build outputs
+**/build
+**/.vercel
+
+# Log files
+**/npm-debug.log*
+**/yarn-debug.log*
+**/yarn-error.log*
+**/.pnpm-debug.log*
+
+# Environment variables
+# Ignore all .env files, but not templates
+.env*
+!.env.example
+!.env.template
+
+# TypeScript build info
+**/*.tsbuildinfo
+**/next-env.d.ts
+
+# Temporary files and OS-specific files
+**/.DS_Store
+**/temp/
+**/*.pem
+
+# Test coverage
+**/coverage
