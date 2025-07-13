@@ -26,80 +26,67 @@ interface SunoCallbackData {
 }
 
 export async function POST(request: NextRequest) {
+  // Clone the request to log the raw body, as .json() consumes it
+  const requestClone = request.clone();
   try {
-    const callbackPayload: SunoCallbackData = await request.json()
-
-    console.log("Received music generation callback:", callbackPayload)
+    const rawBody = await requestClone.text();
+    console.log('--- Suno Callback Received ---');
+    console.log('Raw Payload:', rawBody);
+    
+    // Now, parse the JSON from the original request
+    const callbackPayload: SunoCallbackData = await request.json();
+    console.log('Parsed Payload:', JSON.stringify(callbackPayload, null, 2));
 
     if (!callbackPayload.data?.task_id) {
-      return NextResponse.json({ error: "task_id is required in callback data" }, { status: 400 })
+      console.error('Callback Error: task_id is missing from payload.');
+      return NextResponse.json({ error: "task_id is required in callback data" }, { status: 400 });
     }
 
-    const taskId = callbackPayload.data.task_id
+    const taskId = callbackPayload.data.task_id;
+    console.log(`Processing Task ID: ${taskId}`);
 
     // Determine status from callback type and code
-    let status: "pending" | "completed" | "failed"
-    let audioUrl: string | undefined
-    let errorMessage: string | undefined
+    let status: "pending" | "completed" | "failed";
+    let audioUrl: string | undefined;
+    let errorMessage: string | undefined;
 
     if (callbackPayload.code === 200 && callbackPayload.data.callbackType === "complete") {
-      status = "completed"
-      // Get the first audio URL from the generated data
+      status = "completed";
       if (callbackPayload.data.data && callbackPayload.data.data.length > 0) {
-        audioUrl = callbackPayload.data.data[0].audio_url
+        audioUrl = callbackPayload.data.data[0].audio_url;
+        console.log(`Status: completed. Audio URL found: ${audioUrl}`);
+      } else {
+        status = "failed";
+        errorMessage = "'completed' status but no audio data in payload.";
+        console.error(`Callback Error for ${taskId}: ${errorMessage}`);
       }
     } else if (callbackPayload.code !== 200 || callbackPayload.data.callbackType === "failed") {
-      status = "failed"
-      errorMessage = callbackPayload.msg || "Music generation failed"
+      status = "failed";
+      errorMessage = callbackPayload.msg || "Music generation failed";
+      console.log(`Status: failed. Reason: ${errorMessage}`);
     } else {
-      status = "pending"
+      status = "pending";
+      console.log(`Status: pending. Reason: ${callbackPayload.msg}`);
     }
 
-    console.log(`Processing callback for task ${taskId}: status=${status}, audioUrl=${audioUrl}`)
 
-    // Update the task in Supabase
-    const updatedTask = await updateMusicTask(taskId, {
+
+    const updates = {
       status: status,
       audio_url: audioUrl,
       error_message: errorMessage
-    })
+    };
 
-    console.log("Updated music task in database:", updatedTask)
+    console.log(`Attempting to update task ${taskId} in Supabase with:`, updates);
+    
+    // Update the task in Supabase
+    const updatedTask = await updateMusicTask(taskId, updates);
+
+    console.log(`Successfully updated task ${taskId} in database. New data:`, updatedTask);
 
     // Note: SSE notifications removed - local script uses polling instead
 
-    // Forward to local development server
-    try {
-      const localCallbackData = {
-        taskId: taskId,
-        status: status,
-        audio_url: status === 'completed' ? audioUrl : undefined,
-        error_message: status === 'failed' ? errorMessage : undefined,
-        prompt: updatedTask?.prompt
-      }
 
-      // Get local development URL from environment or use default
-      const localUrl = process.env.LOCAL_DEV_URL || 'http://localhost:3000'
-      const callbackUrl = `${localUrl}/api/local-music-callback`
-      
-      console.log("🔄 Forwarding to local server:", callbackUrl)
-      
-      const response = await fetch(callbackUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(localCallbackData),
-      })
-
-      if (response.ok) {
-        console.log("🔄 Successfully forwarded to local server")
-      } else {
-        console.warn("🔄 Failed to forward to local server:", response.status, response.statusText)
-      }
-      
-    } catch (forwardError) {
-      console.warn("🔄 Failed to forward to local server:", forwardError)
-      // Don't fail the whole callback if forwarding fails
-    }
 
     return NextResponse.json({ 
       success: true, 
