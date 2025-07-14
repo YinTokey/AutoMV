@@ -358,21 +358,9 @@ async function createVideo(scenes: any[], imagePaths: string[], audioPaths: stri
         const sceneVideoPath = path.join(CONFIG.TEMP_DIR, `scene_${i + 1}_video.mp4`);
         const audioDuration = await getAudioDuration(audioPaths[i]);
         
-        // Dynamic zoom & pan with random direction/speed for diversity
-        const directions = [
-            "iw/2-(iw/zoom/2)",        // center
-            "0",                         // left/top
-            "iw-(iw/zoom)",              // right
-        ];
-        const randX = directions[Math.floor(Math.random() * directions.length)];
-        const randY = directions[Math.floor(Math.random() * directions.length)];
-        // Reduced zoom speed range to half
-        // Further reduced zoom speed
-        const speed = (Math.random() * 0.0004 + 0.0001).toFixed(4); // 0.0001-0.0005
-        const zoomPan = `zoompan=z='min(zoom+${speed},1.15)':d=${Math.ceil(25 * audioDuration)}:x='${randX}':y='${randY}':s=1024x576`; // Max zoom 1.15 for subtle effect
-        
-        const fadeOutStart = (Math.max(0, audioDuration - 1)).toFixed(2);
-        const cmd = `ffmpeg -loop 1 -i "${imagePaths[i]}" -i "${audioPaths[i]}" -vf "${zoomPan},fade=t=in:st=0:d=1,fade=t=out:st=${fadeOutStart}:d=1,eq=saturation=1.2:contrast=1.05,scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p" -c:v libx264 -c:a aac -shortest -y "${sceneVideoPath}"`;
+        const effects = `fade=t=in:st=0:d=1:enable='between(t,0,10)',eq=saturation=1.2:contrast=1.05:enable='between(t,0,10)'`;
+
+        const cmd = `ffmpeg -loop 1 -i "${imagePaths[i]}" -i "${audioPaths[i]}" -vf "${effects},scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p" -c:v libx264 -c:a aac -shortest -y "${sceneVideoPath}"`;
         
         sendLog(`🎬 Creating scene ${i + 1} video (${audioDuration.toFixed(2)}s)...`);
         try {
