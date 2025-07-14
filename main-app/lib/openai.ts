@@ -37,6 +37,42 @@ export async function optimizePrompt(prompt: string): Promise<string> {
   }
 }
 
+export async function enhanceImagePrompt(prompt: string): Promise<string> {
+  sendLog(`🎨 Enhancing image prompt: "${prompt.substring(0, 30)}..."`);
+  if (!CONFIG.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY not configured');
+
+  try {
+    const response = await makeRequest('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${CONFIG.OPENAI_API_KEY}` },
+      data: {
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content: "You are an expert image prompt engineer. Your task is to take a user's prompt and enhance it to be more epic and fantastic. Focus on adding vivid descriptions, dynamic action, dramatic lighting, and a cinematic feel. The output should be a single, enhanced prompt string, ready to be used in an image generation model. Do not add any extra conversational text or formatting."
+          },
+          {
+            role: "user",
+            content: `Enhance this prompt: ${prompt}`
+          }
+        ],
+        temperature: 0.8,
+        max_tokens: 300
+      }
+    });
+
+    const enhancedPrompt = response.choices[0].message.content.trim();
+    sendLog(`🎨 Enhanced prompt: ${enhancedPrompt.substring(0, 100)}...`);
+    return enhancedPrompt;
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    sendLog(`⚠️ Error enhancing image prompt: ${message}. Using original prompt.`);
+    // Return original prompt as a fallback
+    return prompt;
+  }
+}
+
 export async function generateScenes(prompt: string, sceneCount: number) {
   sendLog('🎬 Generating scenes with OpenAI...');
   if (!CONFIG.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY not configured');

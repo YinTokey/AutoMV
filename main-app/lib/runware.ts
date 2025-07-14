@@ -3,32 +3,14 @@ import path from 'path';
 import { CONFIG } from './config';
 import { makeRequest, downloadFile } from './utils';
 import { sendLog } from './stream';
-
-const VISUAL_STYLES = [
-    'cinematic, 8k, photorealistic, high detail, vibrant colors',
-    'anime style, key visual, cel shading, vibrant palette',
-    'fantasy, epic, dramatic lighting, matte painting',
-    'sci-fi, futuristic, neon lights, cyberpunk atmosphere',
-    'watercolor, fluid, dreamy, pastel tones',
-    'impressionistic, oil painting, thick brush strokes',
-    'pixel art, 16-bit, retro game aesthetic',
-    'steampunk, victorian, brass machinery, dramatic',
-    'noir film, monochrome, strong shadows, moody',
-    'surrealism, dali-esque, melting landscapes',
-    'minimalist, flat design, bold shapes',
-    'vaporwave, 90s retro, gridlines, pink and cyan',
-    'glitch art, distorted, RGB shift, futuristic',
-    'comic book, halftone, bold outlines',
-    'fantasy watercolor, luminous, ethereal glow'
-];
+import { enhanceImagePrompt } from './openai';
  
 export async function generateImage(prompt: string, sceneNumber: number, characterImageDataURI: string | null, retryCount = 0): Promise<string> {
   sendLog(`🖼️ Generating image for scene ${sceneNumber}...`);
   if (!CONFIG.RUNWARE_API_KEY) throw new Error('RUNWARE_API_KEY not configured');
 
-  const randomStyle = VISUAL_STYLES[Math.floor(Math.random() * VISUAL_STYLES.length)];
-
   try {
+    const enhancedPrompt = await enhanceImagePrompt(prompt);
     let payload;
 
     if (characterImageDataURI) {
@@ -37,7 +19,7 @@ export async function generateImage(prompt: string, sceneNumber: number, charact
         taskType: "imageInference",
         taskUUID: uuidv4(),
         model: "bfl:3@1",
-        positivePrompt: `${prompt}, ${randomStyle}`,
+        positivePrompt: enhancedPrompt,
         referenceImages: [characterImageDataURI],
         width: 1392,
         height: 752,
@@ -45,7 +27,6 @@ export async function generateImage(prompt: string, sceneNumber: number, charact
         outputFormat: "JPEG",
       };
     } else {
-      const enhancedPrompt = `${prompt}, ${randomStyle}`;
       const negativePrompt = 'blurry, low quality, boring, flat, ugly, simple, watermark, text';
 
       payload = {
