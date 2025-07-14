@@ -1,13 +1,9 @@
-import { v4 as uuidv4 } from 'uuid';
-import path from 'path';
-import { CONFIG } from './config';
 import { sendLog, sendError, sendVideoUrl } from './stream';
 import { ensureDirectories, cleanup } from './utils';
 import { optimizePrompt, generateScenes } from './openai';
 import { generateImagesConcurrently } from './runware';
-import { generateMusicConcurrently } from './suno';
+import { generateMusicForScenes } from './suno';
 import { createVideo } from './ffmpeg';
-import fs from 'fs/promises';
 
 export async function runGeneration(initialPrompt: string, sceneCount: number, instrumental: boolean, characterImageFile: File | null) {
   try {
@@ -23,7 +19,7 @@ export async function runGeneration(initialPrompt: string, sceneCount: number, i
 
     const scenes = await generateScenes(optimizedPrompt, sceneCount);
     const imagePaths = await generateImagesConcurrently(scenes, characterImageDataURI);
-    const audioPaths = await generateMusicConcurrently(scenes, instrumental);
+    const audioPaths = await generateMusicForScenes(scenes, imagePaths, instrumental);
 
     // Ensure we have content to proceed
     if (imagePaths.length === 0 || audioPaths.length === 0) {

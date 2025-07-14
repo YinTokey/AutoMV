@@ -2,6 +2,7 @@ import path from 'path';
 import { CONFIG } from './config';
 import { makeRequest, downloadFile } from './utils';
 import { sendLog } from './stream';
+import { enhanceMusicPromptWithImage } from './openai';
 
 export async function generateMusic(prompt: string, style: string, title: string, sceneNumber: number, instrumental: boolean): Promise<string> {
   sendLog(`🎵 Starting music generation for scene ${sceneNumber}...`);
@@ -84,25 +85,41 @@ export async function pollMusicCompletion(taskId: string, sceneNumber: number): 
   throw new Error(`Music generation timeout for scene ${sceneNumber}`);
 }
 
-export async function generateMusicConcurrently(scenes: { music_prompt: string, style: string, title: string }[], instrumental: boolean): Promise<string[]> {
+export async function generateMusicForScenes(scenes: { music_prompt: string, style: string, title: string }[], imagePaths: string[], instrumental: boolean): Promise<string[]> {
+  if (scenes.length !== imagePaths.length) {
+    throw new Error("Mismatched number of scenes and images for music generation.");
+  }
+
   const musicTasks: { taskId: string, sceneNumber: number }[] = [];
+  
   for (let i = 0; i < scenes.length; i += CONFIG.MAX_CONCURRENT_MUSIC) {
-    const batch = scenes.slice(i, i + CONFIG.MAX_CONCURRENT_MUSIC);
-    sendLog(`🎵 Starting music batch ${Math.floor(i / CONFIG.MAX_CONCURRENT_MUSIC) + 1}`);
-    const batchPromises = batch.map(async (scene, batchIndex) => {
+    const batchScenes = scenes.slice(i, i + CONFIG.MAX_CONCURRENT_MUSIC);
+    const batchImagePaths = imagePaths.slice(i, i + CONFIG.MAX_CONCURRENT_MUSIC);
+    
+    sendLog(`🎵 Starting music enhancement and generation batch ${Math.floor(i / CONFIG.MAX_CONCURRENT_MUSIC) + 1}`);
+    
+    const batchPromises = batchScenes.map(async (scene, batchIndex) => {
       const sceneNumber = i + batchIndex + 1;
-      const taskId = await generateMusic(scene.music_prompt, scene.style, scene.title, sceneNumber, instrumental);
+      const imagePath = batchImagePaths[batchIndex];
+
+      // Enhance the music prompt using the corresponding image
+      const enhancedMusicPrompt = await enhanceMusicPromptWithImage(scene.music_prompt, imagePath);
+
+      // Generate music with the enhanced prompt
+      const taskId = await generateMusic(enhancedMusicPrompt, scene.style, scene.title, sceneNumber, instrumental);
       return { taskId, sceneNumber };
     });
+
     const resolvedTasks = await Promise.all(batchPromises);
     musicTasks.push(...resolvedTasks);
+    
     if (i + CONFIG.MAX_CONCURRENT_MUSIC < scenes.length) {
       await new Promise(resolve => setTimeout(resolve, CONFIG.MUSIC_BATCH_DELAY));
     }
   }
-  
+
   sendLog('🎵 All music tasks started. Now polling for completion...');
-  const audioPaths: string[] = await Promise.all(
+  const audioResults = await Promise.all(
     musicTasks.map(async task => {
       try {
         return await pollMusicCompletion(task.taskId, task.sceneNumber);
@@ -113,6 +130,13 @@ export async function generateMusicConcurrently(scenes: { music_prompt: string, 
       }
     })
   );
-  sendLog('🎵 All music tracks completed!');
-  return audioPaths.filter((p): p is string => p !== null);
+  
+  const audioPaths = audioResults.filter((path): path is string => path !== null);
+  
+  if (audioPaths.length === 0) {
+    throw new Error('All music generation tasks failed - no audio tracks were created');
+  }
+  
+  sendLog(`🎵 Music generation completed! ${audioPaths.length} out of ${musicTasks.length} tracks successful.`);
+  return audioPaths;
 } 

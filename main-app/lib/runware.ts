@@ -10,7 +10,7 @@ export async function generateImage(prompt: string, sceneNumber: number, charact
   if (!CONFIG.RUNWARE_API_KEY) throw new Error('RUNWARE_API_KEY not configured');
 
   try {
-    const enhancedPrompt = await enhanceImagePrompt(prompt);
+    const enhancedPrompt = await enhanceImagePrompt(prompt, !!characterImageDataURI);
     let payload;
 
     if (characterImageDataURI) {
