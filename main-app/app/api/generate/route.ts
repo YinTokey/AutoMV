@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
 import { exec } from 'child_process';
@@ -26,7 +26,7 @@ const CONFIG = {
   MUSIC_BATCH_DELAY: 1000,
 };
 
-let streamController: ReadableStreamDefaultController<any>;
+let streamController: ReadableStreamDefaultController<string>;
 // Keep a list of generated video URLs for this server instance
 const generatedVideos: string[] = [];
 
@@ -69,25 +69,29 @@ async function downloadFile(url: string, filepath: string) {
       });
       writer.on('error', reject);
     });
-  } catch (error: any) {
-    throw new Error(`Failed to download ${url}: ${error.message}`);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to download ${url}: ${message}`);
   }
 }
 
-async function makeRequest(url: string, options: any = {}) {
+async function makeRequest(url: string, options: import('axios').AxiosRequestConfig = {}) {
   try {
     const response = await axios({
       url,
       method: options.method || 'GET',
       headers: { 'Content-Type': 'application/json', ...options.headers },
-      data: options.body ? JSON.parse(options.body) : undefined,
-      ...options,
+      data: options.data,
     });
     return response.data;
-  } catch (error: any) {
-    const status = error.response?.status || 'Unknown';
-    const message = error.response?.data || error.message;
-    throw new Error(`HTTP ${status}: ${JSON.stringify(message)}`);
+  } catch (error: unknown) {
+    if (axios.isAxiosError(error)) {
+      const status = error.response?.status || 'Unknown';
+      const message = error.response?.data || error.message;
+      throw new Error(`HTTP ${status}: ${JSON.stringify(message)}`);
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Request failed: ${message}`);
   }
 }
 
@@ -95,63 +99,75 @@ async function optimizePrompt(prompt: string): Promise<string> {
   sendLog('🤖 Optimizing prompt...');
   if (!CONFIG.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY not configured');
 
-  const response = await makeRequest('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${CONFIG.OPENAI_API_KEY}` },
-    body: JSON.stringify({
-      model: "gpt-4o",
-      messages: [
-        {
-          role: "system",
-          content: "You are a creative assistant. Your task is to take a user's idea for a music video and expand it into a more vivid and detailed prompt. Focus on mood, visual elements, and narrative. The output should be a single, enhanced prompt string. Do not add any extra conversational text or formatting."
-        },
-        {
-          role: "user",
-          content: `Enhance this music video concept: ${prompt}`
-        }
-      ],
-      temperature: 0.7,
-      max_tokens: 500
-    })
-  });
+  try {
+    const response = await makeRequest('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${CONFIG.OPENAI_API_KEY}` },
+      data: {
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content: "You are a creative assistant. Your task is to take a user's idea for a music video and expand it into a more vivid and detailed prompt. Focus on mood, visual elements, and narrative. The output should be a single, enhanced prompt string. Do not add any extra conversational text or formatting."
+          },
+          {
+            role: "user",
+            content: `Enhance this music video concept: ${prompt}`
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 500
+      }
+    });
 
-  const optimizedPrompt = response.choices[0].message.content.trim();
-  sendLog(`🤖 Optimized prompt: ${optimizedPrompt.substring(0, 100)}...`);
-  return optimizedPrompt;
+    const optimizedPrompt = response.choices[0].message.content.trim();
+    sendLog(`🤖 Optimized prompt: ${optimizedPrompt.substring(0, 100)}...`);
+    return optimizedPrompt;
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    sendLog(`⚠️ Error optimizing prompt: ${message}`);
+    throw new Error(`Failed to optimize prompt: ${message}`);
+  }
 }
 
 async function generateScenes(prompt: string, sceneCount: number) {
     sendLog('🎬 Generating scenes with OpenAI...');
     if (!CONFIG.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY not configured');
   
-    const response = await makeRequest('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${CONFIG.OPENAI_API_KEY}` },
-      body: JSON.stringify({
-        model: "gpt-4o",
-        messages: [
-          {
-            role: "system",
-            content: `You are an expert music video director. Create detailed scene breakdowns. For each scene, provide an image prompt, a music prompt, a music style (e.g., 'cinematic', 'pop', 'ambient'), and a title for the music track. Return a JSON object: { "scenes": [ { "scene_number": 1, "image_prompt": "...", "music_prompt": "...", "style": "...", "title": "..." } ] }`
-          },
-          {
-            role: "user",
-            content: `Create ${sceneCount} scenes for a music video: ${prompt}`
-          }
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0.8,
-        max_tokens: 2000
-      })
-    });
+    try {
+      const response = await makeRequest('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${CONFIG.OPENAI_API_KEY}` },
+        data: {
+          model: "gpt-4o",
+          messages: [
+            {
+              role: "system",
+              content: `You are an expert music video director. Create detailed scene breakdowns. For each scene, provide an image prompt, a music prompt, a music style (e.g., 'cinematic', 'pop', 'ambient'), and a title for the music track. Return a JSON object: { "scenes": [ { "scene_number": 1, "image_prompt": "...", "music_prompt": "...", "style": "...", "title": "..." } ] }`
+            },
+            {
+              role: "user",
+              content: `Create ${sceneCount} scenes for a music video: ${prompt}`
+            }
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.8,
+          max_tokens: 2000
+        }
+      });
   
-    const content = response.choices[0].message.content;
-    const parsedResponse = JSON.parse(content);
-    if (!parsedResponse.scenes || !Array.isArray(parsedResponse.scenes)) {
-      throw new Error('Invalid scenes format from OpenAI');
+      const content = response.choices[0].message.content;
+      const parsedResponse = JSON.parse(content);
+      if (!parsedResponse.scenes || !Array.isArray(parsedResponse.scenes)) {
+        throw new Error('Invalid scenes format from OpenAI');
+      }
+      sendLog(`🎬 Generated ${parsedResponse.scenes.length} scenes`);
+      return parsedResponse.scenes;
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      sendLog(`⚠️ Error generating scenes: ${message}`);
+      throw new Error(`Failed to generate scenes: ${message}`);
     }
-    sendLog(`🎬 Generated ${parsedResponse.scenes.length} scenes`);
-    return parsedResponse.scenes;
 }
 
 const VISUAL_STYLES = [
@@ -172,69 +188,83 @@ const VISUAL_STYLES = [
     'fantasy watercolor, luminous, ethereal glow'
 ];
 
-async function generateImage(prompt: string, sceneNumber: number, characterImagePath: string | null, retryCount = 0) {
-    sendLog(`🖼️ Generating image for scene ${sceneNumber}...`);
-    if (!CONFIG.RUNWARE_API_KEY) throw new Error('RUNWARE_API_KEY not configured');
+async function generateImage(prompt: string, sceneNumber: number, characterImageDataURI: string | null, retryCount = 0): Promise<string> {
+  sendLog(`🖼️ Generating image for scene ${sceneNumber}...`);
+  if (!CONFIG.RUNWARE_API_KEY) throw new Error('RUNWARE_API_KEY not configured');
 
-    if (!prompt || prompt.trim() === '') {
-        if (retryCount < 3) {
-            sendLog(`⚠️ Empty image prompt for scene ${sceneNumber}. Retrying...`);
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            // We can't really get a new prompt here without more context,
-            // so we'll just log it and hope other scenes are okay.
-            // In a real scenario, we might want to call OpenAI again for just this scene.
-            throw new Error(`Persistent empty image prompt for scene ${sceneNumber}`);
-        } else {
-            throw new Error(`Empty image prompt for scene ${sceneNumber}`);
-        }
-    }
+  const randomStyle = VISUAL_STYLES[Math.floor(Math.random() * VISUAL_STYLES.length)];
 
-    const randomStyle = VISUAL_STYLES[Math.floor(Math.random() * VISUAL_STYLES.length)];
-        let enhancedPrompt = `${prompt}, ${randomStyle}`;
-    if (characterImagePath) {
-      // Note: This is a simplified way to reference the character.
-      // A more advanced implementation might use image-to-image models or specific prompt techniques.
-      enhancedPrompt = `A character that looks like the reference image is in this scene: ${prompt}, ${randomStyle}`;
-      sendLog(`🧑 Incorporating character reference for scene ${sceneNumber}`);
-    }
-    const negativePrompt = 'blurry, low quality, boring, flat, ugly, simple, watermark, text';
+  try {
+    let payload;
 
-    const response = await makeRequest('https://api.runware.ai/v1', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${CONFIG.RUNWARE_API_KEY}` },
-      body: JSON.stringify([{
+    if (characterImageDataURI) {
+      sendLog(`🧑 Incorporating character reference for scene ${sceneNumber} using data URI`);
+      payload = {
+        taskType: "imageInference",
+        taskUUID: uuidv4(),
+        model: "bfl:3@1",
+        positivePrompt: `${prompt}, ${randomStyle}`,
+        referenceImages: [characterImageDataURI],
+        width: 1392,
+        height: 752,
+        numberResults: 1,
+        outputFormat: "JPEG",
+      };
+    } else {
+      const enhancedPrompt = `${prompt}, ${randomStyle}`;
+      const negativePrompt = 'blurry, low quality, boring, flat, ugly, simple, watermark, text';
+
+      payload = {
         taskType: "imageInference",
         taskUUID: uuidv4(),
         positivePrompt: enhancedPrompt,
         model: "rundiffusion:120@100",
         negativePrompt: negativePrompt,
-            width: 1024,
+        width: 1024,
         height: 576,
         numberResults: 1,
-            sampler: "DPM++ 2M Karras",
-            steps: 30,
-            guidanceScale: 7
-      }])
+        sampler: "DPM++ 2M Karras",
+        steps: 30,
+        guidanceScale: 7
+      };
+    }
+
+    const response = await makeRequest('https://api.runware.ai/v1', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${CONFIG.RUNWARE_API_KEY}` },
+      data: [payload]
     });
-  
+
     const task = response.data[0];
     if (!task || !task.imageURL) throw new Error(`No image URL in response: ${JSON.stringify(response)}`);
-  
+
     const imagePath = path.join(CONFIG.TEMP_DIR, `scene_${sceneNumber}_image.jpg`);
     await downloadFile(task.imageURL, imagePath);
     sendLog(`🖼️ Scene ${sceneNumber} image ready`);
     return imagePath;
+
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (retryCount < 3) {
+      sendLog(`⚠️ Error generating image for scene ${sceneNumber}: ${message}. Retrying...`);
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      return generateImage(prompt, sceneNumber, characterImageDataURI, retryCount + 1);
+    } else {
+      throw new Error(`Failed to generate image for scene ${sceneNumber} after multiple retries: ${message}`);
+    }
+  }
 }
 
-async function generateImagesConcurrently(scenes: any[], characterImagePath: string | null) {
-    const imagePaths = [];
+async function generateImagesConcurrently(scenes: { image_prompt: string }[], characterImageDataURI: string | null): Promise<string[]> {
+    const imagePaths: string[] = [];
     for (let i = 0; i < scenes.length; i += CONFIG.MAX_CONCURRENT_IMAGES) {
       const batch = scenes.slice(i, i + CONFIG.MAX_CONCURRENT_IMAGES);
       sendLog(`🖼️ Starting image batch ${Math.floor(i / CONFIG.MAX_CONCURRENT_IMAGES) + 1}`);
       const batchPromises = batch.map((scene, batchIndex) => 
-                generateImage(scene.image_prompt, i + batchIndex + 1, characterImagePath)
+                generateImage(scene.image_prompt, i + batchIndex + 1, characterImageDataURI)
       );
-      imagePaths.push(...await Promise.all(batchPromises));
+      const resolvedPaths = await Promise.all(batchPromises);
+      imagePaths.push(...resolvedPaths);
       if (i + CONFIG.MAX_CONCURRENT_IMAGES < scenes.length) {
         await new Promise(resolve => setTimeout(resolve, CONFIG.IMAGE_BATCH_DELAY));
       }
@@ -244,14 +274,15 @@ async function generateImagesConcurrently(scenes: any[], characterImagePath: str
 }
 
 
-async function generateMusic(prompt: string, style: string, title: string, sceneNumber: number, instrumental: boolean) {
+async function generateMusic(prompt: string, style: string, title: string, sceneNumber: number, instrumental: boolean): Promise<string> {
     sendLog(`🎵 Starting music generation for scene ${sceneNumber}...`);
     if (!CONFIG.SUNO_API_KEY) throw new Error('SUNO_API_KEY not configured');
   
-    const response = await makeRequest(`${CONFIG.SUNO_API_BASE_URL}/api/v1/generate`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${CONFIG.SUNO_API_KEY}` },
-      body: JSON.stringify({ 
+    try {
+      const response = await makeRequest(`${CONFIG.SUNO_API_BASE_URL}/api/v1/generate`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${CONFIG.SUNO_API_KEY}` },
+        data: { 
           prompt,
           style,
           title,
@@ -260,29 +291,37 @@ async function generateMusic(prompt: string, style: string, title: string, scene
           model: "V3_5",
           negativeTags: "low quality, noisy, distorted, muffled",
           callBackUrl: `${CONFIG.VERCEL_URL}/api/music-callback`
-      }),
-    });
-    
-    let taskId = response.task_id || response.id || response.data?.taskId || response.data?.task_id || response.data?.id || response.taskId;
-    if (!taskId) throw new Error(`No task ID in Suno response: ${JSON.stringify(response)}`);
-
-    // Create the initial task record in the database via the webhook app
-    try {
-      await makeRequest(`${CONFIG.VERCEL_URL}/api/music-status/${taskId}`, {
-        method: 'POST',
-        body: JSON.stringify({
-          prompt: prompt,
-          status: 'pending'
-        })
+        }
       });
-      sendLog(`📝 Task ${taskId} created in database`);
-    } catch (e: any) {
-      sendLog(`⚠️ Could not create task in database: ${e.message}`);
-      // We can still continue, but polling might be less reliable
+      
+      const taskId = response.task_id || response.id || response.data?.taskId || response.data?.task_id || response.data?.id || response.taskId;
+      if (!taskId) {
+        throw new Error(`No task ID in Suno response: ${JSON.stringify(response)}`);
+      }
+
+      // Create the initial task record in the database via the webhook app
+      try {
+        await makeRequest(`${CONFIG.VERCEL_URL}/api/music-status/${taskId}`, {
+          method: 'POST',
+          data: {
+            prompt,
+            status: 'pending'
+          }
+        });
+        sendLog(`📝 Task ${taskId} created in database`);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        sendLog(`⚠️ Could not create task in database: ${message}`);
+        // We can still continue, but polling might be less reliable
+      }
+    
+      sendLog(`🎵 Music task started for scene ${sceneNumber}: ${taskId}`);
+      return taskId;
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      sendLog(`⚠️ Error starting music generation for scene ${sceneNumber}: ${message}`);
+      throw new Error(`Failed to start music generation: ${message}`);
     }
-  
-    sendLog(`🎵 Music task started for scene ${sceneNumber}: ${taskId}`);
-    return taskId;
 }
 
 async function pollMusicCompletion(taskId: string, sceneNumber: number) {
@@ -304,17 +343,20 @@ async function pollMusicCompletion(taskId: string, sceneNumber: number) {
           throw new Error(`Music generation failed: ${response.error_message}`);
         }
         await new Promise(resolve => setTimeout(resolve, CONFIG.POLL_INTERVAL));
-      } catch (error: any) {
-        sendLog(`⚠️ Poll attempt ${attempt} failed: ${error.message}`);
-        if (attempt >= CONFIG.MAX_POLL_ATTEMPTS) throw error;
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        sendLog(`⚠️ Poll attempt ${attempt} failed: ${message}`);
+        if (attempt >= CONFIG.MAX_POLL_ATTEMPTS) {
+          throw new Error(`Polling failed after ${attempt} attempts: ${message}`);
+        }
         await new Promise(resolve => setTimeout(resolve, CONFIG.POLL_INTERVAL));
       }
     }
     throw new Error(`Music generation timeout for scene ${sceneNumber}`);
 }
 
-async function generateMusicConcurrently(scenes: any[], instrumental: boolean) {
-    const musicTasks = [];
+async function generateMusicConcurrently(scenes: { music_prompt: string, style: string, title: string }[], instrumental: boolean): Promise<string[]> {
+    const musicTasks: { taskId: string, sceneNumber: number }[] = [];
     for (let i = 0; i < scenes.length; i += CONFIG.MAX_CONCURRENT_MUSIC) {
         const batch = scenes.slice(i, i + CONFIG.MAX_CONCURRENT_MUSIC);
         sendLog(`🎵 Starting music batch ${Math.floor(i / CONFIG.MAX_CONCURRENT_MUSIC) + 1}`);
@@ -334,7 +376,7 @@ async function generateMusicConcurrently(scenes: any[], instrumental: boolean) {
         musicTasks.map(task => pollMusicCompletion(task.taskId, task.sceneNumber))
     );
     sendLog('🎵 All music tracks completed!');
-    return audioPaths;
+    return audioPaths.filter((p): p is string => p !== null);
 }
 
 async function getAudioDuration(filePath: string): Promise<number> {
@@ -342,13 +384,14 @@ async function getAudioDuration(filePath: string): Promise<number> {
         const command = `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${filePath}"`;
         const { stdout } = await execAsync(command);
         return parseFloat(stdout.trim());
-    } catch (error) {
-        sendLog(`⚠️ Could not get duration for ${filePath}. Defaulting to 5s.`);
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        sendLog(`⚠️ Could not get duration for ${filePath}: ${message}. Defaulting to 5s.`);
         return 5.0; // Default duration
     }
 }
 
-async function createVideo(scenes: any[], imagePaths: string[], audioPaths: string[]) {
+async function createVideo(scenes: { music_prompt: string, style: string, title: string }[], imagePaths: string[], audioPaths: string[]): Promise<string> {
     sendLog('🎬 Creating final video with FFmpeg...');
     const videoFileName = `music_video_${Date.now()}.mp4`;
     const outputPath = path.join(CONFIG.OUTPUT_DIR, videoFileName);
@@ -366,10 +409,10 @@ async function createVideo(scenes: any[], imagePaths: string[], audioPaths: stri
         try {
             await execAsync(cmd);
             sceneVideoPaths.push(sceneVideoPath);
-        } catch (error: any) {
-            sendLog(`❌ FFmpeg error for scene ${i + 1}: ${error.message}`);
-            // Decide if we should skip this scene or stop the whole process
-            // For now, we'll just log and continue
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : String(error);
+            sendLog(`❌ FFmpeg error for scene ${i + 1}: ${message}`);
+            // For now, we'll just log and continue, skipping the failed scene.
         }
     }
 
@@ -394,14 +437,21 @@ async function createVideo(scenes: any[], imagePaths: string[], audioPaths: stri
 
 async function cleanup() {
   sendLog('🧹 Cleaning up temporary files...');
-  try {
-    const files = await fs.readdir(CONFIG.TEMP_DIR);
-    for (const file of files) {
-      await fs.unlink(path.join(CONFIG.TEMP_DIR, file));
-    }
-    sendLog('🧹 Cleanup complete');
-  } catch (error: any) {
-    sendLog(`🧹 Cleanup failed: ${error.message}`);
+  const tempDirs = [CONFIG.TEMP_DIR, path.join(process.cwd(), 'public/temp_uploads')];
+
+  for (const dir of tempDirs) {
+      try {
+        const files = await fs.readdir(dir);
+        for (const file of files) {
+          await fs.unlink(path.join(dir, file));
+        }
+        sendLog(`🧹 Cleaned ${path.basename(dir)}`);
+      } catch (error: unknown) {
+        if (error instanceof Error && 'code' in error && error.code !== 'ENOENT') {
+            const message = error.message;
+            sendLog(`🧹 Cleanup failed for ${path.basename(dir)}: ${message}`);
+        }
+      }
   }
 }
 
@@ -435,20 +485,31 @@ export async function POST(req: NextRequest) {
 }
 
 async function runGeneration(initialPrompt: string, sceneCount: number, instrumental: boolean, characterImageFile: File | null) {
+  try {
     await ensureDirectories();
-        const optimizedPrompt = await optimizePrompt(initialPrompt);
-        let characterImagePath: string | null = null;
+    const optimizedPrompt = await optimizePrompt(initialPrompt);
+    
+    let characterImageDataURI: string | null = null;
     if (characterImageFile) {
-      const imageBuffer = Buffer.from(await characterImageFile.arrayBuffer());
-      characterImagePath = path.join(CONFIG.TEMP_DIR, `char_ref_${uuidv4()}_${characterImageFile.name}`);
-      await fs.writeFile(characterImagePath, imageBuffer);
-      sendLog(`🧑 Character reference image saved: ${characterImageFile.name}`);
+        const imageBuffer = Buffer.from(await characterImageFile.arrayBuffer());
+        characterImageDataURI = `data:image/jpeg;base64,${imageBuffer.toString('base64')}`;
+        sendLog(`🧑 Character image prepared as data URI.`);
     }
 
     const scenes = await generateScenes(optimizedPrompt, sceneCount);
-        const imagePaths = await generateImagesConcurrently(scenes, characterImagePath);
-        const audioPaths = await generateMusicConcurrently(scenes, instrumental);
+    const imagePaths = await generateImagesConcurrently(scenes, characterImageDataURI);
+    const audioPaths = await generateMusicConcurrently(scenes, instrumental);
+
+    // Ensure we have content to proceed
+    if (imagePaths.length === 0 || audioPaths.length === 0) {
+      throw new Error('No images or audio generated for the video.');
+    }
+
     const videoUrl = await createVideo(scenes, imagePaths, audioPaths);
     sendVideoUrl(videoUrl);
     await cleanup();
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    sendError(message);
+  }
 }
