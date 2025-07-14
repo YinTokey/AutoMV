@@ -4,9 +4,11 @@ import { optimizePrompt, generateScenes } from './openai';
 import { generateImagesConcurrently } from './runware';
 import { generateMusicForScenes } from './suno';
 import { createVideo } from './ffmpeg';
+import { resetCosts } from './cost';
 
 export async function runGeneration(initialPrompt: string, sceneCount: number, instrumental: boolean, characterImageFile: File | null) {
   try {
+    resetCosts();
     await ensureDirectories();
     const optimizedPrompt = await optimizePrompt(initialPrompt);
     

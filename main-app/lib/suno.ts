@@ -3,6 +3,7 @@ import { CONFIG } from './config';
 import { makeRequest, downloadFile } from './utils';
 import { sendLog } from './stream';
 import { enhanceMusicPromptWithImage } from './openai';
+import { recordCost } from './cost';
 
 export async function generateMusic(prompt: string, style: string, title: string, sceneNumber: number, instrumental: boolean): Promise<string> {
   sendLog(`🎵 Starting music generation for scene ${sceneNumber}...`);
@@ -68,6 +69,7 @@ export async function pollMusicCompletion(taskId: string, sceneNumber: number): 
         sendLog(`✅ Music completed for scene ${sceneNumber}!`);
         const audioPath = path.join(CONFIG.TEMP_DIR, `scene_${sceneNumber}_audio.mp3`);
         await downloadFile(response.audio_url, audioPath);
+        recordCost(0.06, `Music generation for scene ${sceneNumber}`, 'Suno');
         return audioPath;
       } else if (response.status === 'failed') {
         throw new Error(`Music generation failed: ${response.error_message}`);

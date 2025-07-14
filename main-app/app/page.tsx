@@ -4,6 +4,14 @@ import { useState } from 'react';
 import ControlPanel from './components/ControlPanel';
 import VideoPlayer from './components/VideoPlayer';
 import StatusLog from './components/StatusLog';
+import CostDisplay from './components/CostDisplay';
+
+type CostData = {
+  category: 'OpenAI' | 'Runware' | 'Suno';
+  details: string;
+  amount: number;
+  totalCost: number;
+};
 
 export default function Home() {
   const [prompt, setPrompt] = useState('A vibrant, futuristic city at night, glowing with neon lights');
@@ -13,6 +21,7 @@ export default function Home() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [costs, setCosts] = useState<CostData[]>([]);
 
   const handleGenerate = async () => {
     if (!prompt) return;
@@ -20,6 +29,7 @@ export default function Home() {
     setIsGenerating(true);
     setLogs(['🚀 Starting video generation...']);
     setVideoUrl(null);
+    setCosts([]);
 
     const formData = new FormData();
     formData.append('prompt', prompt);
@@ -54,6 +64,9 @@ export default function Home() {
               const event = JSON.parse(data);
               if (event.log) {
                 setLogs(prev => [...prev, event.log]);
+              }
+              if (event.cost) {
+                setCosts(prev => [...prev, event.cost]);
               }
               if (event.videoUrl) {
                 setVideoUrl(event.videoUrl);
@@ -117,6 +130,9 @@ export default function Home() {
           <div className="glass-card p-6">
             <StatusLog logs={logs} />
           </div>
+
+          {/* Cost Display */}
+          <CostDisplay costs={costs} />
         </div>
       </main>
 

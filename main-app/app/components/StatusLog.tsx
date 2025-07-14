@@ -32,10 +32,6 @@ const hasEmojiPrefix = (log: string): boolean => {
 export default function StatusLog({ logs }: StatusLogProps) {
   const logEndRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [logs]);
-
   return (
     <div className="space-y-4">
       {/* Header */}

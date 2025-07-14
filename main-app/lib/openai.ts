@@ -2,6 +2,7 @@ import { CONFIG } from './config';
 import { makeRequest } from './utils';
 import { sendLog } from './stream';
 import fs from 'fs/promises';
+import { recordCost } from './cost';
 
 export async function optimizePrompt(prompt: string): Promise<string> {
   sendLog('🤖 Optimizing prompt...');
@@ -29,6 +30,9 @@ export async function optimizePrompt(prompt: string): Promise<string> {
     });
 
     const optimizedPrompt = response.choices[0].message.content.trim();
+    if (response.usage) {
+      recordCost({ input: response.usage.prompt_tokens, output: response.usage.completion_tokens }, 'gpt-4o', 'OpenAI');
+    }
     sendLog(`🤖 Optimized prompt: ${optimizedPrompt.substring(0, 100)}...`);
     return optimizedPrompt;
   } catch (error: unknown) {
@@ -68,6 +72,9 @@ export async function enhanceImagePrompt(prompt: string, hasCharacterReference: 
     });
 
     const enhancedPrompt = response.choices[0].message.content.trim();
+    if (response.usage) {
+      recordCost({ input: response.usage.prompt_tokens, output: response.usage.completion_tokens }, 'gpt-4o', 'OpenAI');
+    }
     sendLog(`🎨 Enhanced prompt: ${enhancedPrompt.substring(0, 100)}...`);
     return enhancedPrompt;
   } catch (error: unknown) {
@@ -125,6 +132,9 @@ Output only the new music prompt string, with no extra text.`;
     });
 
     const enhancedPrompt = response.choices[0].message.content.trim();
+    if (response.usage) {
+      recordCost({ input: response.usage.prompt_tokens, output: response.usage.completion_tokens }, 'gpt-4o', 'OpenAI');
+    }
     sendLog(`🎶 Enhanced music prompt: ${enhancedPrompt}`);
     return enhancedPrompt;
 
@@ -178,6 +188,9 @@ Return a JSON object with the following structure: { "scenes": [ { "scene_number
     const parsedResponse = JSON.parse(content);
     if (!parsedResponse.scenes || !Array.isArray(parsedResponse.scenes)) {
       throw new Error('Invalid scenes format from OpenAI');
+    }
+    if (response.usage) {
+      recordCost({ input: response.usage.prompt_tokens, output: response.usage.completion_tokens }, 'gpt-4o', 'OpenAI');
     }
     sendLog(`🎬 Generated ${parsedResponse.scenes.length} scenes`);
     return parsedResponse.scenes;

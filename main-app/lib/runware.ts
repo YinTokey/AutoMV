@@ -4,6 +4,7 @@ import { CONFIG } from './config';
 import { makeRequest, downloadFile } from './utils';
 import { sendLog } from './stream';
 import { enhanceImagePrompt } from './openai';
+import { recordCost } from './cost';
  
 export async function generateImage(prompt: string, sceneNumber: number, characterImageDataURI: string | null, retryCount = 0): Promise<string> {
   sendLog(`🖼️ Generating image for scene ${sceneNumber}...`);
@@ -25,6 +26,7 @@ export async function generateImage(prompt: string, sceneNumber: number, charact
         height: 752,
         numberResults: 1,
         outputFormat: "JPEG",
+        includeCost: true,
       };
     } else {
       const negativePrompt = 'blurry, low quality, boring, flat, ugly, simple, watermark, text';
@@ -40,7 +42,8 @@ export async function generateImage(prompt: string, sceneNumber: number, charact
         numberResults: 1,
         sampler: "DPM++ 2M Karras",
         steps: 30,
-        guidanceScale: 7
+        guidanceScale: 7,
+        includeCost: true,
       };
     }
 
@@ -55,6 +58,11 @@ export async function generateImage(prompt: string, sceneNumber: number, charact
 
     const imagePath = path.join(CONFIG.TEMP_DIR, `scene_${sceneNumber}_image.jpg`);
     await downloadFile(task.imageURL, imagePath);
+    
+    if (task.cost) {
+      recordCost(task.cost, `Image generation for scene ${sceneNumber}`, 'Runware');
+    }
+
     sendLog(`🖼️ Scene ${sceneNumber} image ready`);
     return imagePath;
 
