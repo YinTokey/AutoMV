@@ -2,7 +2,10 @@
 
 Auto-MV Creator is a web app that transforms your ideas into music videos.
 
-## Generated Video Samples
+## Demo
+<iframe width="1080" height="720" src="https://www.youtube.com/embed/ZL0Uz-EWJhc" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+
+## More Video Samples
 
 - [Sample 1](https://www.youtube.com/watch?v=S1xqjLtWxyg)
 - [Sample 2](https://www.youtube.com/watch?v=A9PidgjVKAY)
