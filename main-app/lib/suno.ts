@@ -21,7 +21,7 @@ export async function generateMusic(prompt: string, style: string, title: string
         instrumental,
         model: "V3_5",
         negativeTags: "low quality, noisy, distorted, muffled",
-        callBackUrl: `${CONFIG.VERCEL_URL}/api/music-callback`
+        callBackUrl: `${CONFIG.WEBHOOK_VERCEL_URL}/api/music-callback`
       }
     });
     
@@ -32,7 +32,7 @@ export async function generateMusic(prompt: string, style: string, title: string
 
     // Create the initial task record in the database via the webhook app
     try {
-      await makeRequest(`${CONFIG.VERCEL_URL}/api/music-status/${taskId}`, {
+      await makeRequest(`${CONFIG.WEBHOOK_VERCEL_URL}/api/music-status/${taskId}`, {
         method: 'POST',
         data: {
           prompt,
@@ -58,7 +58,7 @@ export async function generateMusic(prompt: string, style: string, title: string
 export async function pollMusicCompletion(taskId: string, sceneNumber: number): Promise<string> {
   sendLog(`⏳ Polling music for scene ${sceneNumber}...`);
   for (let attempt = 1; attempt <= CONFIG.MAX_POLL_ATTEMPTS; attempt++) {
-    const pollUrl = `${CONFIG.VERCEL_URL}/api/music-status/${taskId}`;
+    const pollUrl = `${CONFIG.WEBHOOK_VERCEL_URL}/api/music-status/${taskId}`;
     try {
       sendLog(`- Attempt ${attempt}: Polling ${pollUrl}`);
       const response = await makeRequest(pollUrl, {

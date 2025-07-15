@@ -22,7 +22,7 @@ export function sendVideoUrl(videoUrl: string) {
   if (streamController) {
     streamController.enqueue(`data: ${JSON.stringify({ videoUrl, videoList: generatedVideos })}\n\n`);
   }
-}
+} 
 
 export function sendCost(cost: any) {
   if (streamController) {

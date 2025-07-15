@@ -2,7 +2,7 @@ import path from 'path';
 
 // Configuration
 export const CONFIG = {
-  VERCEL_URL: process.env.VERCEL_URL || 'http://localhost:3000',
+  WEBHOOK_VERCEL_URL: process.env.WEBHOOK_VERCEL_URL || 'http://localhost:3000',
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
   RUNWARE_API_KEY: process.env.RUNWARE_API_KEY,
   SUNO_API_KEY: process.env.SUNO_API_KEY,
