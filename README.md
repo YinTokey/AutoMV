@@ -24,6 +24,17 @@ Auto-MV Creator is a web app that transforms your ideas into music videos.
 
 You will need API keys for each service. Sign up and obtain your keys from the official sites above.
 
+## Install FFmpeg
+**Windows**
+[Video Tutorial](https://www.youtube.com/watch?v=JR36oH35Fgg
+)
+
+**Mac**
+```
+brew install ffmpeg
+```
+
+
 ## Deploying the Webhook
 
 The webhook service (in the `webhook/` folder) is required for handling music status updates and callbacks from the Suno API. It must be running for the main app to receive music generation results.
