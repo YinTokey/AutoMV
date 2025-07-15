@@ -14,7 +14,7 @@ type CostData = {
 };
 
 export default function Home() {
-  const [prompt, setPrompt] = useState('A vibrant, futuristic city at night, glowing with neon lights');
+  const [prompt, setPrompt] = useState('');
   const [sceneCount, setSceneCount] = useState(1);
   const [instrumental, setInstrumental] = useState(false);
   const [characterImage, setCharacterImage] = useState<File | null>(null);
@@ -123,7 +123,7 @@ export default function Home() {
         <div className="lg:w-2/3 flex flex-col gap-6">
           {/* Video Player */}
           <div className="glass-card p-6 flex-grow">
-            <VideoPlayer videoUrl={videoUrl} />
+            <VideoPlayer videoUrl={videoUrl} isGenerating={isGenerating} />
           </div>
 
           {/* Status Log */}

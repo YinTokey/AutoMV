@@ -1,15 +1,19 @@
 "use client";
 
 import React from 'react';
+import LoadingSpinner from './LoadingSpinner';
 
 interface VideoPlayerProps {
   videoUrl: string | null;
+  isGenerating: boolean;
 }
 
-export default function VideoPlayer({ videoUrl }: VideoPlayerProps) {
+export default function VideoPlayer({ videoUrl, isGenerating }: VideoPlayerProps) {
   return (
     <div className="h-full min-h-[400px] flex items-center justify-center">
-      {videoUrl ? (
+      {isGenerating ? (
+        <LoadingSpinner />
+      ) : videoUrl ? (
         <div className="w-full max-w-4xl">
           <div className="relative rounded-2xl overflow-hidden shadow-2xl">
             <video
