@@ -1,4 +1,4 @@
-# Auto-MV Creator
+# AutoMV
 
 AutoMV is a web app that transforms your ideas into music videos.
 
