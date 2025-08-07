@@ -1,6 +1,6 @@
 # Auto-MV Creator
 
-Auto-MV Creator is a web app that transforms your ideas into music videos.
+AutoMV is a web app that transforms your ideas into music videos.
 
 ## Demo
 
