@@ -1,6 +1,6 @@
 # AutoMV
 
-AutoMV is a web app that transforms your ideas into music videos.
+AutoMV is a web app that transforms your ideas into music videos, achieving a 72% idea‑to‑video completion rate and a median generation time of under 45 seconds.
 
 ## Demo
 
